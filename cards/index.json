@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "cards": [
+    {
+      "path": "cards/hieroglyph-你好.md",
+      "title": "Приветствие 你好",
+      "type": "hieroglyph",
+      "lesson": 1,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/rule-的.md",
+      "title": "Частица 的",
+      "type": "rule",
+      "lesson": 2,
+      "level": "HSK1"
+    }
+  ]
+}
