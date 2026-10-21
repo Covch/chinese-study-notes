@@ -9,16 +9,24 @@
 <body>
 <div class="app">
 
+  <header class="page-head">
+    <h1>Китайские карточки</h1>
+    <div class="user-box">
+      <label for="user-name">Ваше имя</label>
+      <input id="user-name" type="text" placeholder="необязательно" autocomplete="off">
+    </div>
+  </header>
+
+  <!-- Вкладки -->
+  <nav class="tabs">
+    <button id="tab-list" class="tab is-active" type="button">Список</button>
+    <button id="tab-review" class="tab" type="button">Повторение</button>
+    <button id="tab-data" class="tab" type="button">Данные</button>
+    <a class="tab" href="glyphs.html">Иероглифы</a>
+  </nav>
+
   <!-- Экран 1: список карточек -->
   <section id="view-list" class="view">
-    <header class="page-head">
-      <h1>Китайские карточки</h1>
-      <div class="user-box">
-        <label for="user-name">Ваше имя</label>
-        <input id="user-name" type="text" placeholder="необязательно" autocomplete="off">
-      </div>
-    </header>
-
     <div class="controls">
       <label class="field">
         <span>Урок</span>
@@ -38,6 +46,12 @@
     <p id="list-status" class="status"></p>
     <div id="list-error" class="error hidden"></div>
     <ul id="card-list" class="card-list"></ul>
+
+    <nav id="list-pager" class="pager hidden" aria-label="Страницы списка">
+      <button id="btn-list-prev" class="btn" type="button">← Назад</button>
+      <span id="list-page-info" class="pager-info"></span>
+      <button id="btn-list-next" class="btn" type="button">Вперёд →</button>
+    </nav>
   </section>
 
   <!-- Экран 2: карточка -->
@@ -57,11 +71,7 @@
 
     <div id="card-rating" class="rating hidden">
       <div class="rating-label">Насколько помню?</div>
-      <div class="rating-buttons">
-        <button class="btn rate rate-bad" type="button" data-rating="bad">Не помню</button>
-        <button class="btn rate rate-ok" type="button" data-rating="ok">Помню нормально</button>
-        <button class="btn rate rate-good" type="button" data-rating="good">Помню хорошо</button>
-      </div>
+      <div id="card-rating-buttons" class="rating-buttons"></div>
       <p id="rating-info" class="rating-info"></p>
     </div>
 
@@ -71,13 +81,131 @@
     </nav>
   </section>
 
+  <!-- Экран 3: настройка повторения -->
+  <section id="view-review" class="view hidden">
+    <h2 class="panel-title">Что повторяем</h2>
+
+    <div class="controls controls-stack">
+      <label class="field field-wide">
+        <span>Режим</span>
+        <select id="review-mode">
+          <option value="srs">Пора повторить (по интервалам)</option>
+          <option value="manual">Подряд по фильтрам (вручную)</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Урок</span>
+        <select id="review-lesson"></select>
+      </label>
+      <label class="field">
+        <span>Уровень</span>
+        <select id="review-level"></select>
+      </label>
+      <label class="field">
+        <span>Тип</span>
+        <select id="review-type"></select>
+      </label>
+      <label class="field">
+        <span>Сколько карточек</span>
+        <select id="review-size">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="30">30</option>
+          <option value="50">50</option>
+          <option value="0">все доступные</option>
+        </select>
+      </label>
+    </div>
+
+    <p id="review-status" class="status"></p>
+    <div id="review-error" class="error hidden"></div>
+
+    <nav class="card-nav">
+      <button id="btn-start-review" class="btn btn-accent" type="button">Начать повторение</button>
+      <button id="btn-resume-review" class="btn btn-ghost hidden" type="button">Продолжить начатую</button>
+    </nav>
+
+    <p class="hint">
+      В режиме «по интервалам» вперёд идут просроченные карточки, затем новые.
+      Оценка «Не помню» возвращает карточку в конец этой же сессии.
+    </p>
+  </section>
+
+  <!-- Экран 4: сессия повторения -->
+  <section id="view-session" class="view hidden">
+    <div class="session-head">
+      <div class="session-counter"><span id="session-progress-text"></span></div>
+      <div class="session-progress"><div id="session-progress-fill" class="session-progress-fill"></div></div>
+      <button id="btn-exit-session" class="btn btn-ghost" type="button">Выйти</button>
+    </div>
+
+    <header class="card-head">
+      <h2 id="session-title"></h2>
+      <div id="session-meta" class="meta"></div>
+    </header>
+
+    <div id="session-error" class="error hidden"></div>
+    <div id="session-preamble" class="preamble hidden"></div>
+    <div id="session-sections" class="sections"></div>
+
+    <div id="session-rating" class="rating hidden">
+      <div class="rating-label">Насколько помню?</div>
+      <div id="session-rating-buttons" class="rating-buttons"></div>
+      <p id="session-rating-info" class="rating-info"></p>
+    </div>
+
+    <nav class="card-nav">
+      <button id="btn-skip" class="btn btn-ghost" type="button">Пропустить</button>
+    </nav>
+  </section>
+
+  <!-- Экран 5: данные -->
+  <section id="view-data" class="view hidden">
+    <h2 class="panel-title">Данные в этом браузере</h2>
+    <p id="data-summary" class="status"></p>
+    <div id="data-unavailable" class="error hidden"></div>
+
+    <div class="panel">
+      <h3 class="panel-title">Выгрузить</h3>
+      <p class="hint">Скачивает JSON: имя, история оценок и расписание повторений.</p>
+      <button id="btn-export" class="btn btn-accent" type="button">Выгрузить в файл</button>
+      <p id="export-result" class="status hidden"></p>
+    </div>
+
+    <div class="panel">
+      <h3 class="panel-title">Загрузить</h3>
+      <label class="field field-wide">
+        <span>Как загружать</span>
+        <select id="import-mode">
+          <option value="merge">Объединить с текущими — безопасно</option>
+          <option value="replace">Заменить текущие данными из файла</option>
+        </select>
+      </label>
+      <label class="field field-wide">
+        <span>Файл резервной копии</span>
+        <input id="import-file" type="file" accept="application/json,.json">
+      </label>
+      <div id="import-result" class="status hidden"></div>
+      <div id="import-error" class="error hidden"></div>
+    </div>
+
+    <div class="panel">
+      <h3 class="panel-title">Сброс расписания</h3>
+      <p class="hint">Удаляет только интервалы повторений. История оценок остаётся на месте.</p>
+      <button id="btn-reset-srs" class="btn btn-ghost" type="button">Сбросить расписание</button>
+      <p id="reset-result" class="status hidden"></p>
+    </div>
+  </section>
+
   <footer class="foot">
     <a id="repo-link" href="#">Репозиторий на GitHub</a>
   </footer>
 </div>
 
 <script src="js/md.js"></script>
+<script src="js/srs.js"></script>
 <script src="js/store.js"></script>
+<script src="js/pagination.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

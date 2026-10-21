@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Иероглифы — Китайские карточки</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app app-wide">
+
+  <header class="page-head">
+    <div>
+      <h1>Иероглифы</h1>
+      <p class="subtitle">Нажмите на иероглиф, чтобы открыть карточку</p>
+    </div>
+    <a class="btn btn-ghost" href="index.html">← К карточкам</a>
+  </header>
+
+  <div class="controls">
+    <label class="field">
+      <span>Урок</span>
+      <select id="glyph-lesson"></select>
+    </label>
+    <label class="field">
+      <span>Уровень</span>
+      <select id="glyph-level"></select>
+    </label>
+    <label class="field field-wide">
+      <span>Поиск</span>
+      <input id="glyph-search" type="search" placeholder="иероглиф, пиньинь или название" autocomplete="off">
+    </label>
+    <button id="glyph-reset" class="btn btn-ghost" type="button">Сбросить</button>
+  </div>
+
+  <p id="glyph-status" class="status">Загружаю иероглифы…</p>
+  <div id="glyph-error" class="error hidden"></div>
+  <div id="glyph-grid" class="glyph-grid"></div>
+
+  <nav id="glyph-pager" class="pager hidden" aria-label="Страницы иероглифов">
+    <button id="glyph-prev" class="btn" type="button">← Назад</button>
+    <span id="glyph-page-info" class="pager-info"></span>
+    <button id="glyph-next" class="btn" type="button">Вперёд →</button>
+  </nav>
+
+  <footer class="foot">
+    <a href="index.html">Список карточек</a>
+  </footer>
+</div>
+
+<script src="js/md.js"></script>
+<script src="js/pagination.js"></script>
+<script src="js/glyphs.js"></script>
+</body>
+</html>

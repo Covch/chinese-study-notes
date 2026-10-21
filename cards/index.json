@@ -14,6 +14,167 @@
       "type": "rule",
       "lesson": 2,
       "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-him.md",
+      "title": "Him",
+      "type": "hieroglyph",
+      "lesson": 1,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-want.md",
+      "title": "Want",
+      "type": "hieroglyph",
+      "lesson": 1,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-1.md",
+      "title": "1",
+      "type": "hieroglyph",
+      "lesson": 1,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-2.md",
+      "title": "2",
+      "type": "hieroglyph",
+      "lesson": 1,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-3.md",
+      "title": "3",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-4.md",
+      "title": "4",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-5.md",
+      "title": "5",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-6.md",
+      "title": "6",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-7.md",
+      "title": "7",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-8.md",
+      "title": "8",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-9.md",
+      "title": "9",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-10.md",
+      "title": "10",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-11.md",
+      "title": "11",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-12.md",
+      "title": "12",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-13.md",
+      "title": "13",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-14.md",
+      "title": "14",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-15.md",
+      "title": "15",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-16.md",
+      "title": "16",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-17.md",
+      "title": "17",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/hieroglyph-18.md",
+      "title": "18",
+      "type": "hieroglyph",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/rule-Вопросительное-местоимение-什么.md",
+      "title": "Вопросительное местоимение «什么»",
+      "type": "rule",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/rule-Предложение-с-是.md",
+      "title": "Предложение с «是»",
+      "type": "rule",
+      "lesson": 3,
+      "level": "HSK1"
+    },
+    {
+      "path": "cards/rule-Вопросительное-предложение-с-吗.md",
+      "title": "Вопросительное предложение с «吗»",
+      "type": "rule",
+      "lesson": 3,
+      "level": "HSK1"
     }
   ]
 }
