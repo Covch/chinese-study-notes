@@ -1,5 +1,4 @@
 ---
-title: Частица 的
 type: rule
 lesson: 2
 level: HSK1

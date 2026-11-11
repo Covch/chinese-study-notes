@@ -1,11 +1,13 @@
 // Автотесты для js/*.js: математика повторений, разбор карточек, хранилище,
 // статические проверки разметки. Без фреймворков и зависимостей.
 //
-// В этом окружении Node не установлен, поэтому основной запуск — через gjs
-// (Mozilla SpiderMonkey, есть в системе):
+// Запуск через gjs (Mozilla SpiderMonkey) — он есть в системе:
 //
 //     gjs tools/test_js.js
-//     node tools/test_js.js     — тот же файл, если Node когда-нибудь появится
+//
+// Если установлен Node (в этом окружении есть Node 24), тот же файл работает и так:
+//
+//     node tools/test_js.js
 //
 // Код возврата: 0 — всё прошло, 1 — есть провалы. Проверяются только чистые
 // функции и хранилище на подставных объектах; DOM, fetch и переходы по кнопкам
@@ -22,6 +24,15 @@ function readFile(path) {
   var res = imports.gi.Gio.File.new_for_path(path).load_contents(null);
   if (!res[0]) throw new Error('не удалось прочитать ' + path);
   return new TextDecoder().decode(res[1]);
+}
+
+// Существует ли файл: нужен, чтобы честно пропустить проверки, которым нужен
+// каталог вне репозитория (в самостоятельном клоне git_web его нет).
+function fileExists(path) {
+  if (typeof require === 'function') {
+    try { return require('fs').existsSync(path); } catch (e) { return false; }
+  }
+  return imports.gi.Gio.File.new_for_path(path).query_exists(null);
 }
 
 // Каталог этого файла: под Node — __dirname, под gjs — путь запущенного скрипта.
@@ -85,6 +96,7 @@ var failed = 0;
 var failures = [];
 var groupName = '';
 var notes = [];
+var skippedGroups = 0;
 
 function say(line) {
   if (typeof print === 'function') { print(line); return; }
@@ -100,6 +112,12 @@ function group(name, fn) {
   try {
     fn();
   } catch (e) {
+    if (e && e.skip) {
+      // Пропуск — не провал: в этом окружении группу проверить нечем.
+      skippedGroups += 1;
+      say('  ' + name + ': пропущено — ' + e.message);
+      return;
+    }
     // Исключение в одной группе не должно скрывать остальные.
     ok(false, 'исключение: ' + (e && e.message ? e.message : String(e)));
   }
@@ -108,6 +126,13 @@ function group(name, fn) {
   var bad = failed - failedBefore;
   say('  ' + name + ': ' + checks + ' проверок' + (bad > 0 ? ', провалов ' + bad : ' — ok'));
   for (var i = noteBefore; i < notes.length; i++) say('    замечание: ' + notes[i]);
+}
+
+// Прервать группу как «пропущено» (не провал): причина попадает в отчёт.
+function skip(reason) {
+  var error = new Error(String(reason));
+  error.skip = true;
+  throw error;
 }
 
 function ok(condition, message) {
@@ -146,20 +171,26 @@ loadScript('srs.js');
 fakeWindow.Srs = globalThis.Srs;
 loadScript('md.js');
 loadScript('store.js');
+loadScript('cardlabel.js');
 // В gjs document отсутствует, поэтому glyphs.js останавливается на чистых функциях.
 loadScript('glyphs.js');
+loadScript('api.js');
+loadScript('comments.js');
 
 var Srs = globalThis.Srs;
 var Store = fakeWindow.Store;
 var MdParser = fakeWindow.MdParser;
 var GlyphCore = fakeWindow.GlyphCore;
+var CardLabel = fakeWindow.CardLabel;
+var Api = fakeWindow.Api;
+var Comments = fakeWindow.Comments;
 var DAY = Srs.DAY;
 var NOW = FIXED_NOW;
 
 // --- разбор кода и разметки -----------------------------------------------
 
 group('разбор: js/*.js компилируются', function () {
-  ['srs.js', 'md.js', 'store.js', 'pagination.js', 'app.js', 'glyphs.js'].forEach(function (name) {
+  ['srs.js', 'md.js', 'store.js', 'pagination.js', 'app.js', 'glyphs.js', 'api.js', 'comments.js'].forEach(function (name) {
     // new Function компилирует, но не выполняет: ловим синтаксис даже в app.js.
     var error = null;
     try {
@@ -215,7 +246,8 @@ group('разбор: страницы подключают все js/*.js', func
   var indexScripts = pageScripts(HTML_PATH);
   var glyphScripts = pageScripts(GLYPHS_HTML_PATH);
 
-  deepEq(indexScripts, ['js/md.js', 'js/srs.js', 'js/store.js', 'js/pagination.js', 'js/app.js'],
+  deepEq(indexScripts, ['js/md.js', 'js/srs.js', 'js/store.js', 'js/pagination.js',
+    'js/cardlabel.js', 'js/api.js', 'js/comments.js', 'js/app.js'],
     'порядок подключения скриптов на index.html');
 
   deepEq(glyphScripts, ['js/md.js', 'js/pagination.js', 'js/glyphs.js'],
@@ -262,6 +294,33 @@ group('разбор: id из glyphs.js есть в glyphs.html', function () {
   while ((m = reGet.exec(glyphsSource)) !== null) {
     ok(htmlIds[m[1]] === true, 'элемент #' + m[1] + ' из glyphs.js объявлен в glyphs.html');
   }
+});
+
+// --- подпись карточки -----------------------------------------------------
+
+group('CardLabel: подпись по типу и номеру', function () {
+  var cards = [
+    { path: 'cards/hieroglyph-1.md', type: 'hieroglyph' },
+    { path: 'cards/rule-1.md', type: 'rule' },
+    { path: 'cards/hieroglyph-2.md', type: 'hieroglyph' }
+  ];
+  var numbered = CardLabel.numberCards(cards);
+
+  eq(numbered[0].number, 1, 'первый иероглиф — номер 1');
+  eq(numbered[1].number, 1, 'первое правило — номер 1');
+  eq(numbered[2].number, 2, 'второй иероглиф — номер 2');
+  eq(numbered[0].path, cards[0].path, 'путь карточки сохраняется');
+  ok(cards[0].number === undefined, 'исходный массив не меняется');
+
+  eq(CardLabel.label(numbered[0]), 'Иероглиф 1', 'подпись иероглифа');
+  eq(CardLabel.label(numbered[1]), 'Правило 1', 'подпись правила');
+  eq(CardLabel.label({ type: 'hieroglyph' }), 'Иероглиф', 'без номера — только тип');
+  eq(CardLabel.label({}), 'Карточка', 'без типа — нейтральная подпись');
+  eq(CardLabel.label(null), 'Карточка', 'null не роняет подпись');
+  eq(CardLabel.label({ type: 'hieroglyph', number: 5, title: '你好' }), 'Иероглиф 5',
+    'старое поле title не подсказывает содержимое');
+  eq(CardLabel.typeLabel('rule'), 'правило', 'тип для бейджа — строчными');
+  eq(CardLabel.typeLabel('story'), 'story', 'неизвестный тип не теряется');
 });
 
 // --- парсер карточек ------------------------------------------------------
@@ -316,22 +375,21 @@ group('MdParser.parseCard', function () {
 
 group('GlyphCore: символ и пиньинь из карточки', function () {
   var parsed = MdParser.parseCard('---\n' +
-    'title: Приветствие 你好\ntype: hieroglyph\nlesson: 1\nlevel: HSK1\n---\n' +
+    'type: hieroglyph\nlesson: 1\nlevel: HSK1\n---\n' +
     '\n## Иероглиф\n\n你好\n\n## Пиньинь\n\nnǐ hǎo\n');
 
-  eq(GlyphCore.extractGlyph(parsed, { title: 'Приветствие 你好' }), '你好',
+  eq(GlyphCore.extractGlyph(parsed), '你好',
     'символ берётся из секции «Иероглиф»');
   eq(GlyphCore.extractPinyin(parsed), 'nǐ hǎo', 'пиньинь берётся из одноимённой секции');
   eq(GlyphCore.extractPinyin(MdParser.parseCard('## Пример\nтекст\n')), '',
     'без секции пиньиня — пусто');
 
-  eq(GlyphCore.extractGlyph(null, { title: 'Приветствие 你好' }), '你好',
-    'без файла — CJK из названия');
-  eq(GlyphCore.extractGlyph(null, { title: 'Him' }), 'Him',
-    'без CJK — название целиком');
+  eq(GlyphCore.extractGlyph(MdParser.parseCard('## Пример\nтекст\n')), '',
+    'без секции «Иероглиф» подставлять нечего');
+  eq(GlyphCore.extractGlyph(null), '', 'без файла символ пуст');
 
   var item = {
-    entry: { lesson: 1, level: 'HSK1', title: 'Приветствие 你好' },
+    entry: { lesson: 1, level: 'HSK1' },
     glyph: '你好',
     pinyin: 'nǐ hǎo'
   };
@@ -342,7 +400,8 @@ group('GlyphCore: символ и пиньинь из карточки', functio
   eq(GlyphCore.matches(item, { level: 'HSK1' }), true, 'фильтр по уровню совпадает');
   eq(GlyphCore.matches(item, { search: '你' }), true, 'поиск по символу');
   eq(GlyphCore.matches(item, { search: 'NI' }), true, 'поиск по пиньиню без регистра');
-  eq(GlyphCore.matches(item, { search: 'привет' }), true, 'поиск по названию без регистра');
+  eq(GlyphCore.matches(item, { search: 'привет' }), false,
+    'названия в карточке больше нет — по нему не ищем');
   eq(GlyphCore.matches(item, { search: 'кот' }), false, 'несовпадающий поиск отсекает');
 });
 
@@ -490,6 +549,58 @@ group('Srs.normalizeState', function () {
   deepEq(Srs.normalizeState(valid, NOW), valid, 'корректное состояние не портится');
 });
 
+var SHARED_VECTORS = ROOT + '/../shared/srs_vectors.json';
+
+group('Srs: общие векторы Go/JS (shared/srs_vectors.json)', function () {
+  // Общие векторы лежат в корне проекта, а git_web — отдельный репозиторий.
+  // В самостоятельном клоне файла нет: пропускаем группу, а не роняем прогон.
+  if (!fileExists(SHARED_VECTORS)) {
+    skip('файл ' + SHARED_VECTORS + ' не найден — запускайте тесты из корня проекта');
+  }
+  var vectors = JSON.parse(readFile(SHARED_VECTORS));
+
+  // Порядок ключей в объекте не должен влиять на сравнение.
+  function canon(value) {
+    if (Array.isArray(value)) return value.map(canon);
+    if (value && typeof value === 'object') {
+      var out = {};
+      Object.keys(value).sort().forEach(function (key) { out[key] = canon(value[key]); });
+      return out;
+    }
+    return value;
+  }
+  function same(actual, expected) {
+    return JSON.stringify(canon(actual)) === JSON.stringify(canon(expected));
+  }
+
+  ok(vectors.normalize.length >= 5, 'векторы normalize присутствуют');
+  vectors.normalize.forEach(function (vector) {
+    var actual = Srs.normalizeState(vector.raw, vector.now);
+    ok(same(actual, vector.expect), 'normalize: ' + vector.name);
+  });
+
+  ok(vectors.review.length >= 8, 'векторы review присутствуют');
+  vectors.review.forEach(function (vector) {
+    var actual = Srs.review(vector.state, vector.rating, vector.now);
+    ok(same(actual, vector.expect), 'review: ' + vector.name);
+  });
+
+  vectors.mergeProgress.forEach(function (vector) {
+    var actual = Srs.mergeProgress(vector.local, vector.imported);
+    ok(same(actual, vector.expect), 'mergeProgress: ' + vector.name);
+  });
+
+  vectors.mergeSrs.forEach(function (vector) {
+    var actual = Srs.mergeSrs(vector.local, vector.imported);
+    ok(same(actual, vector.expect), 'mergeSrs: ' + vector.name);
+  });
+
+  vectors.parseEnvelope.forEach(function (vector) {
+    var actual = Srs.parseEnvelope(vector.raw, vector.now);
+    ok(same(actual, vector.expect), 'parseEnvelope: ' + vector.name);
+  });
+});
+
 group('Srs.buildQueue', function () {
   var cards = [
     { path: 'a', type: 'hieroglyph' },
@@ -552,6 +663,22 @@ group('Srs.isDue / daysUntil', function () {
 });
 
 // --- очередь сессии повторения --------------------------------------------
+
+group('Srs.normalizeSession', function () {
+  var manual = Srs.normalizeSession({
+    mode: 'manual', paths: ['a', 7, '', null], i: 99, done: -1, requeued: { a: '2' }
+  });
+  eq(manual.mode, 'manual', 'режим manual сохраняется');
+  deepEq(manual.paths, ['a'], 'нестроковые пути выброшены');
+  eq(manual.i, 1, 'позиция прижата к длине очереди');
+  eq(manual.done, 0, 'отрицательный счётчик оценок исправлен');
+  eq(Srs.normalizeSession({ paths: ['a'], done: 99 }).done, 1,
+    'счётчик оценок не превышает длину очереди');
+  eq(manual.requeued.a, 2, 'счётчик возвратов приведён к числу');
+
+  eq(Srs.normalizeSession(null).mode, 'srs', 'без данных режим по умолчанию srs');
+  eq(Srs.normalizeSession({ mode: 'нечто' }).mode, 'srs', 'неизвестный режим — srs');
+});
 
 group('Srs.stepSession', function () {
   var fresh = function () { return { paths: ['a', 'b', 'c'], i: 0, done: 0, requeued: {} }; };
@@ -712,15 +839,15 @@ group('Srs.parseEnvelope', function () {
     version: 1,
     exportedAt: NOW,
     user: { name: 'Дмитрий' },
-    progress: { 'cards/rule-的.md': [{ ts: NOW, rating: 'good' }] },
-    srs: { 'cards/rule-的.md': { n: 1, ef: 2.5, ivl: 1, due: NOW + DAY, reps: 1, lapses: 0 } },
+    progress: { 'cards/rule-1.md': [{ ts: NOW, rating: 'good' }] },
+    srs: { 'cards/rule-1.md': { n: 1, ef: 2.5, ivl: 1, due: NOW + DAY, reps: 1, lapses: 0 } },
     лишнийКлюч: 'игнорируется'
   };
   var parsed = Srs.parseEnvelope(envelope, NOW);
   eq(parsed.ok, true, 'корректный файл принимается');
   eq(parsed.env.user.name, 'Дмитрий', 'имя из файла читается');
-  eq(parsed.env.progress['cards/rule-的.md'].length, 1, 'история читается');
-  eq(parsed.env.srs['cards/rule-的.md'].ivl, 1, 'расписание читается');
+  eq(parsed.env.progress['cards/rule-1.md'].length, 1, 'история читается');
+  eq(parsed.env.srs['cards/rule-1.md'].ivl, 1, 'расписание читается');
   eq(parsed.skipped, 0, 'ничего не отброшено');
 
   eq(Srs.parseEnvelope(null, NOW).ok, false, 'null — не файл копии');
@@ -924,13 +1051,376 @@ group('сквозной сценарий: выгрузка → импорт', fu
   eq(mergedSrs.srs['cards/a.md'].ivl, 1, 'расписание из копии совпадает с текущим');
 });
 
+
+// --- серверный API: чистые помощники --------------------------------------
+
+group('Api: адреса, health и заголовки', function () {
+  eq(Api.isHealthPayload({ app: 'chinese-cards', version: 1, auth: true }), true,
+    'ответ health с меткой приложения принимается');
+  eq(Api.isHealthPayload({ app: 'другое' }), false, 'чужая метка не сервер');
+  eq(Api.isHealthPayload(null), false, 'null не сервер');
+  eq(Api.isHealthPayload({ app: 'chinese-cards' }), true, 'version не обязателен');
+
+  eq(Api.joinApi('health'), 'api/health', 'относительный адрес API');
+  eq(Api.joinApi('/api/health'), 'api/health', 'ведущий слэш не даёт абсолютный путь');
+  eq(Api.joinApi(''), 'api/', 'пустой путь остаётся префиксом');
+
+  eq(Api.needsCsrf('POST'), true, 'POST требует CSRF');
+  eq(Api.needsCsrf('patch'), true, 'PATCH требует CSRF без учёта регистра');
+  eq(Api.needsCsrf('DELETE'), true, 'DELETE требует CSRF');
+  eq(Api.needsCsrf('GET'), false, 'GET не требует CSRF');
+  eq(Api.needsCsrf('HEAD'), false, 'HEAD не требует CSRF');
+
+  var commentsUrl = Api.commentsUrl('cards/hieroglyph-1.md');
+  ok(commentsUrl.indexOf('comments?path=') === 0, 'адрес комментариев ведёт на comments');
+  ok(commentsUrl.indexOf('cards%2Fhieroglyph-1.md') !== -1, 'путь карточки закодирован');
+
+  var post = Api.buildRequestInit('POST', 'api/review', { json: { path: 'cards/a.md', rating: 'good' } });
+  eq(post.init.method, 'POST', 'метод запроса сохраняется');
+  eq(post.init.credentials, 'same-origin', 'cookie уходит только на свой origin');
+  eq(post.init.headers['X-CL-CSRF'], '1', 'POST получает X-CL-CSRF');
+  eq(post.init.headers['Content-Type'], 'application/json', 'JSON-тело помечается заголовком');
+  eq(post.init.body, '{"path":"cards/a.md","rating":"good"}', 'тело сериализуется в JSON');
+
+  var get = Api.buildRequestInit('GET', 'api/health', {});
+  ok(get.init.headers['X-CL-CSRF'] === undefined, 'GET не получает CSRF');
+  ok(get.init.body === undefined, 'GET без тела');
+
+  var patch = Api.buildRequestInit('PATCH', 'api/me', { headers: { 'X-Test': 'да' }, json: { name: 'А' } });
+  eq(patch.init.headers['X-CL-CSRF'], '1', 'PATCH получает CSRF');
+  eq(patch.init.headers['X-Test'], 'да', 'свои заголовки не теряются');
+
+  var form = { append: function () {}, getAll: function () { return []; } };
+  var withForm = Api.buildRequestInit('POST', 'api/comments', { body: form });
+  ok(withForm.init.body === form, 'FormData передаётся как есть');
+  ok(withForm.init.headers['Content-Type'] === undefined,
+    'Content-Type для multipart не выставляется вручную');
+});
+
+group('Api: тексты ошибок', function () {
+  eq(Api.statusMessage(401), 'нужно войти заново', '401 объясняется по-русски');
+  eq(Api.statusMessage(404), 'не найдено', '404 объясняется по-русски');
+  eq(Api.statusMessage(500), 'ошибка на сервере', '500 объясняется по-русски');
+  ok(Api.statusMessage(418).indexOf('418') !== -1, 'неизвестный код попадает в текст');
+
+  eq(Api.serverErrorText({ error: '  неверный логин или пароль  ' }), 'неверный логин или пароль',
+    'текст ошибки сервера обрезается');
+  eq(Api.serverErrorText({ error: '' }), '', 'пустая ошибка не выдумывается');
+  eq(Api.serverErrorText({ error: 5 }), '', 'нестроковая ошибка игнорируется');
+  eq(Api.errorMessage(401, { error: 'неверный логин или пароль' }), 'неверный логин или пароль',
+    'ошибка сервера важнее общего текста');
+  eq(Api.errorMessage(429, null), 'слишком много попыток, подождите', 'без тела берётся текст по коду');
+
+  deepEq(Api.parseBodyText('{"a":1}', 'application/json'), { a: 1 }, 'JSON разбирается');
+  deepEq(Api.parseBodyText('{"a":1}', ''), { a: 1 }, 'JSON без заголовка тоже разбирается');
+  deepEq(Api.parseBodyText('<html>', 'text/html'), { raw: '<html>' }, 'HTML не притворяется JSON');
+  eq(Api.parseBodyText('', 'application/json'), null, 'пустое тело — null');
+});
+
+group('Api: создание multipart-формы комментария', function () {
+  function FakeFormData() { this.entries = []; }
+  FakeFormData.prototype.append = function (key, value, name) {
+    this.entries.push({ key: key, value: value, name: name });
+  };
+
+  var file = { name: 'photo.jpg', type: 'image/jpeg', size: 123 };
+  var form = Api.createCommentFormData('cards/a.md', 'привет', [file], FakeFormData);
+  eq(form.entries.length, 3, 'path, text и один файл');
+  eq(form.entries[0].key, 'path', 'первое поле — path');
+  eq(form.entries[0].value, 'cards/a.md', 'path передаётся как есть');
+  eq(form.entries[1].key, 'text', 'второе поле — text');
+  eq(form.entries[1].value, 'привет', 'text передаётся как есть');
+  eq(form.entries[2].key, 'images', 'файл уходит в images');
+  eq(form.entries[2].name, 'photo.jpg', 'оригинальное имя файла сохраняется');
+
+  var empty = Api.createCommentFormData('cards/a.md', '', [], FakeFormData);
+  eq(empty.entries.length, 2, 'без файлов остаются два поля');
+});
+
+// --- валидация черновика карточки -----------------------------------------
+
+group('Api.validateCardDraft', function () {
+  var good = Api.validateCardDraft({
+    type: 'hieroglyph',
+    lesson: 3,
+    level: '  HSK2  ',
+    sections: [
+      { title: 'Иероглиф', content: '你好' },
+      { title: 'Перевод', content: 'привет' }
+    ]
+  });
+  eq(good.ok, true, 'корректный черновик принимается');
+  eq(good.payload.level, 'HSK2', 'уровень обрезается по краям');
+  eq(good.payload.lesson, 3, 'урок остаётся числом');
+  eq(good.payload.sections.length, 2, 'секции сохраняются');
+  deepEq(good.payload.sections[0], { title: 'Иероглиф', content: '你好' }, 'секция не портится');
+
+  var stringLesson = Api.validateCardDraft({
+    type: 'rule', lesson: '5', level: 'HSK1', sections: [{ title: 'Правило', content: 'x' }]
+  });
+  eq(stringLesson.ok, true, 'урок строкой из input принимается');
+  eq(stringLesson.payload.lesson, 5, 'урок приводится к числу');
+
+  eq(Api.validateCardDraft(null).ok, false, 'null отвергается');
+  eq(Api.validateCardDraft({ type: 'story', lesson: 1, level: 'HSK1', sections: [] }).ok, false,
+    'неизвестный тип отвергается');
+  eq(Api.validateCardDraft({ type: 'rule', lesson: 0, level: 'HSK1', sections: [] }).ok, false,
+    'урок 0 отвергается');
+  eq(Api.validateCardDraft({ type: 'rule', lesson: 1.5, level: 'HSK1', sections: [] }).ok, false,
+    'дробный урок отвергается');
+  eq(Api.validateCardDraft({ type: 'rule', lesson: '1.5', level: 'HSK1', sections: [] }).ok, false,
+    'дробный урок строкой отвергается');
+  eq(Api.validateCardDraft({ type: 'rule', lesson: 1, level: '   ', sections: [] }).ok, false,
+    'пустой уровень отвергается');
+  eq(Api.validateCardDraft({ type: 'rule', lesson: 1, level: new Array(42).join('a'), sections: [] }).ok, false,
+    'длинный уровень отвергается');
+  eq(Api.validateCardDraft({ type: 'rule', lesson: 1, level: 'HSK1', sections: [] }).ok, false,
+    'пустой список секций отвергается');
+  eq(Api.validateCardDraft({ type: 'rule', lesson: 1, level: 'HSK1', sections: [{ title: '', content: 'x' }] }).ok, false,
+    'пустой заголовок секции отвергается');
+  eq(Api.validateCardDraft({ type: 'rule', lesson: 1, level: 'HSK1', sections: [{ title: 'x', content: 5 }] }).ok, false,
+    'нестроковое содержимое секции отвергается');
+  eq(Api.validateCardDraft({
+    type: 'rule', lesson: 1, level: 'HSK1',
+    sections: [{ title: 'x', content: new Array(10002).join('a') }]
+  }).ok, false, 'слишком длинное содержимое секции отвергается');
+
+  var many = [];
+  for (var i = 0; i < 21; i++) many.push({ title: 'Т' + i, content: '' });
+  eq(Api.validateCardDraft({ type: 'rule', lesson: 1, level: 'HSK1', sections: many }).ok, false,
+    'больше 20 секций отвергается');
+
+  var huge = [];
+  for (var j = 0; j < 6; j++) huge.push({ title: 'Т' + j, content: new Array(9000).join('a') });
+  eq(Api.validateCardDraft({ type: 'rule', lesson: 1, level: 'HSK1', sections: huge }).ok, false,
+    'суммарный текст больше 50000 отвергается');
+
+  deepEq(Api.cardSectionTitles('hieroglyph'), ['Иероглиф', 'Пиньинь', 'Перевод', 'Пример'],
+    'секции иероглифа фиксированы');
+  deepEq(Api.cardSectionTitles('rule'), ['Правило', 'Примеры'], 'секции правила фиксированы');
+  deepEq(Api.cardSectionTitles('story'), [], 'у неизвестного типа секций нет');
+});
+
+// --- данные для графика статистики ---------------------------------------
+
+group('Api.statsChartData', function () {
+  var data = Api.statsChartData([
+    { date: '2026-11-01', bad: 0, ok: 1, good: 2, total: 3 },
+    { date: '2026-11-02', bad: 1, ok: 0, good: 0, total: 1 },
+    { date: '2026-11-03', bad: 0, ok: 0, good: 0, total: 0 }
+  ]);
+  eq(data.bars.length, 3, 'все дни попадают в график');
+  eq(data.max, 3, 'максимум считается по total');
+  eq(data.bars[0].percent, 100, 'максимальный столбец — 100%');
+  eq(data.bars[1].percent, 33, 'процент округляется');
+  eq(data.bars[2].percent, 0, 'нулевой день — 0%');
+
+  var missing = Api.statsChartData([
+    { date: '2026-11-01', bad: 1, ok: 1, good: 1 },
+    { date: '2026-11-02', total: 2 }
+  ]);
+  eq(missing.bars[0].total, 3, 'total досчитывается из bad+ok+good');
+  eq(missing.max, 3, 'max учитывает досчитанный total');
+
+  deepEq(Api.statsChartData(null), { max: 0, bars: [] }, 'null даёт пустой график');
+  deepEq(Api.statsChartData('мусор'), { max: 0, bars: [] }, 'не-массив даёт пустой график');
+});
+
+// --- комментарии: валидация -----------------------------------------------
+
+group('Comments.validateCommentText', function () {
+  eq(Comments.validateCommentText('привет').ok, true, 'обычный текст принимается');
+  eq(Comments.validateCommentText('  привет  ').text, 'привет', 'края обрезаются');
+  eq(Comments.validateCommentText('первая\nвторая').text, 'первая\nвторая', 'перенос строки сохраняется');
+  eq(Comments.validateCommentText('   ').ok, false, 'пробелы — пустой текст');
+  eq(Comments.validateCommentText('').ok, false, 'пустая строка отвергается');
+  eq(Comments.validateCommentText(null).ok, false, 'null отвергается');
+
+  var long = new Array(Comments.MAX_TEXT + 2).join('a');
+  eq(Comments.validateCommentText(long).ok, false, 'текст длиннее 4000 отвергается');
+  var exact = new Array(Comments.MAX_TEXT + 1).join('a');
+  eq(Comments.validateCommentText(exact).ok, true, 'ровно 4000 символов принимается');
+});
+
+group('Comments.validateFiles', function () {
+  function file(name, type, size) { return { name: name, type: type, size: size }; }
+
+  eq(Comments.validateFiles([]).ok, true, 'без файлов комментарий допустим');
+  eq(Comments.validateFiles([file('a.jpg', 'image/jpeg', 100), file('b.png', 'image/png', 200)]).ok,
+    true, 'jpeg и png принимаются');
+  eq(Comments.validateFiles([file('a.webp', 'image/webp', 1)]).ok, true, 'webp принимается');
+  eq(Comments.validateFiles([file('a.gif', 'image/gif', 1)]).ok, true, 'gif принимается');
+  eq(Comments.validateFiles([file('a.svg', 'image/svg+xml', 1)]).ok, false, 'svg запрещён');
+  eq(Comments.validateFiles([file('a.txt', 'text/plain', 1)]).ok, false, 'не-картинка запрещена');
+  eq(Comments.validateFiles([file('a.jpg', '', 1)]).ok, false, 'неизвестный тип не пропускается');
+
+  eq(Comments.validateFiles([
+    file('1.jpg', 'image/jpeg', 1), file('2.jpg', 'image/jpeg', 1),
+    file('3.jpg', 'image/jpeg', 1), file('4.jpg', 'image/jpeg', 1)
+  ]).ok, true, 'четыре файла — предел, принимается');
+  eq(Comments.validateFiles([
+    file('1.jpg', 'image/jpeg', 1), file('2.jpg', 'image/jpeg', 1),
+    file('3.jpg', 'image/jpeg', 1), file('4.jpg', 'image/jpeg', 1),
+    file('5.jpg', 'image/jpeg', 1)
+  ]).ok, false, 'пять файлов отвергаются');
+
+  eq(Comments.validateFiles([file('a.jpg', 'image/jpeg', 0)]).ok, false, 'пустой файл отвергается');
+  eq(Comments.validateFiles([file('a.jpg', 'image/jpeg', Comments.MAX_IMAGE_BYTES)]).ok, true,
+    'файл ровно 8 МБ принимается');
+  eq(Comments.validateFiles([file('a.jpg', 'image/jpeg', Comments.MAX_IMAGE_BYTES + 1)]).ok, false,
+    'файл больше 8 МБ отвергается');
+  eq(Comments.validateFiles([file('a.jpg', 'image/jpeg', 10)], { maxCount: 0 }).ok, false,
+    'свой лимит количества работает');
+});
+
+group('Comments: изображения и удаление', function () {
+  eq(Comments.imageSrc({ url: '/media/x.jpg' }), '/media/x.jpg', 'url сервера используется');
+  eq(Comments.imageSrc({ file: 'x y.jpg' }), 'media/x%20y.jpg', 'file без url кодируется');
+  eq(Comments.imageSrc({}), '', 'без данных пустой src');
+  eq(Comments.imageSrc(null), '', 'null не роняет imageSrc');
+
+  eq(Comments.canDeleteComment({ canDelete: true }, 'u1'), true, 'canDelete сервера уважается');
+  eq(Comments.canDeleteComment({ canDelete: false, userId: 'u1' }, 'u1'), false,
+    'явный запрет сервера сильнее совпадения userId');
+  eq(Comments.canDeleteComment({ userId: 'u1' }, 'u1'), true, 'свой комментарий удаляем');
+  eq(Comments.canDeleteComment({ userId: 'u1' }, 'u2'), false, 'чужой комментарий не удаляем');
+  eq(Comments.canDeleteComment({}, 'u1'), false, 'без userId не удаляем');
+  eq(Comments.canDeleteComment(null, 'u1'), false, 'null не удаляем');
+
+  eq(Comments.formatSize(0), '', 'нулевой размер не показывается');
+  eq(Comments.formatSize(512), '512 Б', 'байты');
+  eq(Comments.formatSize(2048), '2 КБ', 'килобайты');
+  eq(Comments.formatSize(2 * 1024 * 1024), '2 МБ', 'мегабайты');
+});
+
+// --- Store: серверный режим ------------------------------------------------
+
+group('Store.attachServer: чтение из кэша, без localStorage', function () {
+  resetStorages();
+  Store.detach();
+  eq(Store.isServer(), false, 'до attach режим локальный');
+
+  var serverSrs = { n: 2, ef: 2.6, ivl: 6, due: NOW + 6 * DAY, reps: 2, lapses: 0 };
+  var user = Store.attachServer(
+    { id: 'u_1', login: 'dmitry', name: 'Дмитрий', role: 'admin' },
+    {
+      progress: {
+        'cards/a.md': [{ ts: NOW, rating: 'good' }, { ts: NOW + 1, rating: 'bad' }],
+        'cards/bad.md': [{ ts: NOW, rating: 'что-то' }]
+      },
+      srs: { 'cards/a.md': serverSrs, 'cards/musor.md': 'мусор' }
+    }
+  );
+
+  eq(Store.isServer(), true, 'attachServer включает серверный режим');
+  eq(user.name, 'Дмитрий', 'attachServer возвращает пользователя');
+  eq(Store.serverUser().id, 'u_1', 'serverUser отдаёт id');
+  eq(Store.getUserName(), 'Дмитрий', 'имя читается из серверного пользователя');
+  eq(Store.getRatings('cards/a.md').length, 2, 'история читается из кэша');
+  eq(Store.getRatings('cards/a.md')[1].rating, 'bad', 'оценки не подменяются');
+  eq(Store.getRatings('cards/bad.md').length, 0, 'битая оценка не попадает в кэш');
+  eq(Store.getSrsCard('cards/a.md').ivl, 6, 'расписание нормализуется и читается');
+  eq(Store.getSrsCard('cards/musor.md'), null, 'не-объект в расписании выбрасывается');
+  eq(Store.isAvailable(), true, 'в серверном режиме хранилище «доступно»');
+
+  eq(localStorageFake.getItem(Store.KEY_USER), null, 'имя не пишется в localStorage');
+  eq(localStorageFake.getItem(Store.KEY_PROGRESS), null, 'прогресс не пишется в localStorage');
+  eq(localStorageFake.getItem(Store.KEY_SRS), null, 'расписание не пишется в localStorage');
+
+  Store.setUserName('Новое имя');
+  eq(Store.getUserName(), 'Новое имя', 'setUserName меняет серверный кэш');
+  eq(localStorageFake.getItem(Store.KEY_USER), null, 'setUserName не пишет в localStorage');
+
+  Store.detach();
+  eq(Store.isServer(), false, 'detach выключает серверный режим');
+  eq(Store.serverUser(), null, 'после detach пользователя нет');
+  eq(Store.getRatings('cards/a.md').length, 0, 'после detach кэш пуст');
+});
+
+group('Store.applyServerReview: ответ POST /api/review', function () {
+  resetStorages();
+  Store.attachServer({ id: 'u_1', name: 'Д' }, { progress: {}, srs: {} });
+
+  var state = { n: 1, ef: 2.6, ivl: 1, due: NOW + DAY, reps: 1, lapses: 0 };
+  var list = Store.applyServerReview({ path: 'cards/a.md', ts: NOW, rating: 'good' }, state);
+  eq(list.length, 1, 'оценка добавляется в кэш');
+  eq(Store.getRatings('cards/a.md')[0].rating, 'good', 'значение оценки сохраняется');
+  eq(Store.getSrsCard('cards/a.md').ef, 2.6, 'состояние SRS обновляется');
+  eq(localStorageFake.getItem(Store.KEY_PROGRESS), null, 'localStorage не тронут');
+
+  var nested = Store.applyServerReview({
+    path: 'cards/b.md',
+    rating: { ts: NOW + 10, rating: 'bad' }
+  }, { n: 0, ef: 2.2, ivl: 0, due: NOW + 10, reps: 1, lapses: 1 });
+  eq(nested.length, 1, 'вложенная форма ответа принимается');
+  eq(Store.getRatings('cards/b.md')[0].ts, NOW + 10, 'ts берётся из вложенной формы');
+
+  eq(Store.applyServerReview({ path: 'cards/c.md', ts: NOW, rating: 'нет' }, state), null,
+    'неизвестная оценка не пишется');
+  eq(Store.applyServerReview({ ts: NOW, rating: 'good' }, state), null, 'без пути оценка не пишется');
+  eq(Store.getRatings('cards/c.md').length, 0, 'после отказа кэш не вырос');
+
+  Store.detach();
+});
+
+group('Store: замена кэша, сброс и локальный снимок', function () {
+  resetStorages();
+  // Старый локальный прогресс существует до входа на сервер.
+  Store.setUserName('Локальный');
+  Store.addRating('cards/local.md', 'good');
+  Store.setSrsCard('cards/local.md', Srs.review(null, 'good', NOW));
+
+  Store.attachServer({ id: 'u_1', name: 'Серверный' }, {
+    progress: { 'cards/a.md': [{ ts: NOW, rating: 'ok' }] },
+    srs: {}
+  });
+  eq(Store.getUserName(), 'Серверный', 'в серверном режиме имя серверное');
+
+  var snapshot = Store.localSnapshot();
+  eq(snapshot.user.name, 'Локальный', 'снимок читает локальное имя');
+  eq(snapshot.progress['cards/local.md'].length, 1, 'снимок читает локальный прогресс');
+  eq(snapshot.srs['cards/local.md'].ivl, 1, 'снимок читает локальное расписание');
+  eq(snapshot.app, 'chinese-cards', 'снимок — файл копии с меткой');
+
+  eq(Store.replaceServerData({
+    progress: { 'cards/b.md': [{ ts: NOW, rating: 'bad' }] },
+    srs: { 'cards/b.md': Srs.review(null, 'bad', NOW) }
+  }), true, 'replaceServerData принимает данные');
+  eq(Store.getRatings('cards/a.md').length, 0, 'старый кэш прогресса заменён');
+  eq(Store.getRatings('cards/b.md')[0].rating, 'bad', 'новый кэш на месте');
+  eq(Store.getSrsCard('cards/b.md').lapses, 1, 'новое расписание на месте');
+
+  Store.addRating('cards/b.md', 'good');
+  eq(Store.resetSrs(), true, 'сброс расписания в серверном режиме проходит');
+  deepEq(Store.getSrs(), {}, 'расписание очищено');
+  eq(Store.getRatings('cards/b.md').length, 2, 'история оценок не тронута');
+
+  // Импорт в серверном режиме меняет только кэш.
+  var localBefore = localStorageFake.getItem(Store.KEY_PROGRESS);
+  var imported = Store.importData({
+    app: 'chinese-cards', version: 1,
+    progress: { 'cards/imported.md': [{ ts: NOW, rating: 'good' }] }, srs: {}
+  }, 'merge', []);
+  eq(imported.ok, true, 'импорт в серверном режиме проходит');
+  eq(Store.getRatings('cards/imported.md').length, 1, 'импорт попал в кэш');
+  eq(localStorageFake.getItem(Store.KEY_PROGRESS), localBefore,
+    'импорт в серверном режиме не пишет localStorage');
+
+  eq(Store.replaceServerData({ progress: [], srs: [] }), true, 'не-объекты не роняют замену');
+  deepEq(Store.getAllProgress(), {}, 'плохой progress даёт пустой кэш');
+
+  Store.detach();
+  eq(Store.getUserName(), 'Локальный', 'после detach снова читается localStorage');
+});
+
 // --- итог ------------------------------------------------------------------
 
 localStorageFake.broken = false;
 Date.now = realDateNow;
 
 if (failed === 0) {
-  say('ПРОЙДЕНО: ' + passed + ' из ' + (passed + failed) + ' — провалов нет');
+  say('ПРОЙДЕНО: ' + passed + ' из ' + (passed + failed) +
+    (skippedGroups ? ' — провалов нет, пропущено групп: ' + skippedGroups : ' — провалов нет'));
 } else {
   say('ПРОЙДЕНО: ' + passed + ' из ' + (passed + failed) + ', провалено: ' + failed);
   failures.forEach(function (line) { say('  • ' + line); });
@@ -938,7 +1428,9 @@ if (failed === 0) {
 notes.forEach(function (line) { say('замечание: ' + line); });
 
 function finish(code) {
-  if (typeof process !== 'undefined' && process && process.exitCode !== undefined) {
+  if (typeof process !== 'undefined' && process) {
+    // process.exitCode по умолчанию undefined, поэтому проверять его значение
+    // нельзя — иначе под Node выполнение уходило в ветку gjs и падало.
     process.exitCode = code;
     return;
   }

@@ -12,15 +12,12 @@
 
 import json
 import os
-import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CARDS_DIR = os.path.join(ROOT, "cards")
 INDEX_PATH = os.path.join(CARDS_DIR, "index.json")
-INDEX_VERSION = 1
-
-SECTION_RE = re.compile(r"^##\s+")
+INDEX_VERSION = 2
 
 # --- frontmatter -----------------------------------------------------------
 
@@ -87,15 +84,16 @@ def build_entry(path):
     with open(os.path.join(ROOT, path), encoding="utf-8") as handle:
         meta = parse_frontmatter(handle.read())
 
-    lesson_raw = meta.get("lesson", "")
+    lesson_raw = str(meta.get("lesson", "")).strip()
     try:
         lesson = int(lesson_raw)
     except (TypeError, ValueError):
-        lesson = lesson_raw
+        # Нельзя писать в индекс не-число: Go-часть (filler_bot/index.go)
+        # разбирает lesson как int и не прочитает весь index.json.
+        raise ValueError("lesson должно быть целым числом, получено %r" % lesson_raw)
 
     return {
         "path": path,
-        "title": meta.get("title", ""),
         "type": meta.get("type", ""),
         "lesson": lesson,
         "level": meta.get("level", ""),
@@ -128,13 +126,23 @@ def main():
     for path in paths:
         try:
             cards.append(build_entry(path))
-        except OSError as error:
+        except (OSError, ValueError) as error:
             print("пропущен %s: %s" % (path, error), file=sys.stderr)
 
     index = {"version": INDEX_VERSION, "cards": cards}
-    with open(INDEX_PATH, "w", encoding="utf-8") as handle:
-        json.dump(index, handle, ensure_ascii=False, indent=2)
-        handle.write("\n")
+    # Пишем через временный файл: оборванный запуск не оставит битый index.json.
+    tmp_path = INDEX_PATH + ".tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as handle:
+            json.dump(index, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        os.replace(tmp_path, INDEX_PATH)
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
     print("index.json: %d карточек" % len(cards))
     return 0

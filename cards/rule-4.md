@@ -1,5 +1,4 @@
 ---
-title: Предложение с «是»
 type: rule
 lesson: 3
 level: HSK1

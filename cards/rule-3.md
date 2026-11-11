@@ -1,5 +1,4 @@
 ---
-title: Вопросительное предложение с «吗»
 type: rule
 lesson: 3
 level: HSK1

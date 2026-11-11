@@ -21,14 +21,9 @@
     return '';
   }
 
-  // Символ из «## Иероглиф»; если секции нет — хотя бы CJK из названия.
-  function extractGlyph(parsed, entry) {
-    var glyph = sectionLine(parsed, /^иероглиф/i);
-    if (glyph) return glyph;
-
-    var title = String((entry && entry.title) || '');
-    var cjk = title.match(/[㐀-鿿豈-﫿]+/);
-    return cjk ? cjk[0] : title;
+  // Символ из «## Иероглиф». Названия в карточке нет — подставлять нечего.
+  function extractGlyph(parsed) {
+    return sectionLine(parsed, /^иероглиф/i);
   }
 
   function extractPinyin(parsed) {
@@ -44,7 +39,7 @@
     return text;
   }
 
-  // Один набор условий: урок, уровень и поиск по символу/названию/пиньиню.
+  // Один набор условий: урок, уровень и поиск по символу/пиньиню.
   function matches(item, filters) {
     var entry = item.entry || {};
     var f = filters || {};
@@ -55,7 +50,7 @@
     var query = fold(f.search).trim();
     if (!query) return true;
 
-    var haystack = fold([item.glyph, entry.title, item.pinyin].join(' '));
+    var haystack = fold([item.glyph, item.pinyin].join(' '));
     return haystack.indexOf(query) !== -1;
   }
 
@@ -101,12 +96,14 @@
     return String(path).split('/').map(encodeURIComponent).join('/');
   }
 
-  function cardTitle(entry) {
-    return entry.title || entry.path;
-  }
-
   function loadIndex() {
-    return fetch(INDEX_URL).then(function (res) {
+    return fetch(INDEX_URL, { credentials: 'same-origin' }).then(function (res) {
+      // В серверном режиме без входа индекс закрыт: возвращаем на экран входа,
+      // а не показываем техническую ошибку.
+      if (res.status === 401 && global.location) {
+        global.location.href = 'index.html';
+        throw new Error('требуется вход');
+      }
       if (!res.ok) throw new Error('HTTP ' + res.status + ' при загрузке ' + INDEX_URL);
       return res.json();
     }).then(function (data) {
@@ -126,16 +123,18 @@
       return res.text();
     }).then(function (text) {
       var parsed = global.MdParser.parseCard(text);
+      var glyph = extractGlyph(parsed);
       return {
         entry: entry,
-        glyph: extractGlyph(parsed, entry),
+        glyph: glyph,
         pinyin: extractPinyin(parsed),
-        failed: false
+        // Без секции «## Иероглиф» плитку показать нечем — считаем карточку сломанной.
+        failed: !glyph
       };
     }).catch(function () {
       return {
         entry: entry,
-        glyph: extractGlyph(null, entry),
+        glyph: '',
         pinyin: '',
         failed: true
       };
@@ -172,10 +171,8 @@
   }
 
   function tileLabel(item) {
-    var title = cardTitle(item.entry);
     var parts = [item.glyph];
     if (item.pinyin) parts.push(item.pinyin);
-    if (title && title !== item.glyph) parts.push(title);
     return parts.join(' — ');
   }
 

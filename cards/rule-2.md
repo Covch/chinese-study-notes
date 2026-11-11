@@ -1,5 +1,4 @@
 ---
-title: Вопросительное местоимение «什么»
 type: rule
 lesson: 3
 level: HSK1

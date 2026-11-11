@@ -1,5 +1,4 @@
 ---
-title: Приветствие 你好
 type: hieroglyph
 lesson: 1
 level: HSK1

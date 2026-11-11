@@ -178,8 +178,9 @@
   // Текущая сессия повторения: очередь путей и позиция в ней. Живёт в sessionStorage,
   // поэтому нормализация терпит любой мусор.
   function normalizeSession(raw) {
-    var session = { paths: [], i: 0, done: 0, requeued: {} };
+    var session = { mode: 'srs', paths: [], i: 0, done: 0, requeued: {} };
     if (!isObject(raw)) return session;
+    if (raw.mode === 'manual') session.mode = 'manual';
 
     if (Array.isArray(raw.paths)) {
       session.paths = raw.paths.filter(function (path) {
@@ -187,7 +188,7 @@
       });
     }
     session.i = clamp(toInt(raw.i, 0), 0, session.paths.length);
-    session.done = Math.max(0, toInt(raw.done, 0));
+    session.done = Math.min(Math.max(0, toInt(raw.done, 0)), session.paths.length);
     if (isObject(raw.requeued)) {
       for (var path in raw.requeued) {
         if (has(raw.requeued, path)) {

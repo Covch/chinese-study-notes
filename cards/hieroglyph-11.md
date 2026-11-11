@@ -1,5 +1,4 @@
 ---
-title: 11
 type: hieroglyph
 lesson: 3
 level: HSK1

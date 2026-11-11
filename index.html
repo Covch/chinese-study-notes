@@ -11,22 +11,66 @@
 
   <header class="page-head">
     <h1>Китайские карточки</h1>
-    <div class="user-box">
+    <div class="user-box" id="user-box">
       <label for="user-name">Ваше имя</label>
       <input id="user-name" type="text" placeholder="необязательно" autocomplete="off">
     </div>
+    <div id="user-badge" class="user-badge hidden">
+      <span id="user-badge-name" class="user-badge-name"></span>
+      <button id="btn-logout" class="btn btn-ghost" type="button">Выйти</button>
+    </div>
   </header>
 
-  <!-- Вкладки -->
-  <nav class="tabs">
+  <!-- Вкладки. «Добавить» и «Статистика» появляются только в серверном режиме. -->
+  <nav class="tabs" id="tabs">
     <button id="tab-list" class="tab is-active" type="button">Список</button>
     <button id="tab-review" class="tab" type="button">Повторение</button>
     <button id="tab-data" class="tab" type="button">Данные</button>
+    <button id="tab-add" class="tab hidden" type="button">Добавить</button>
+    <button id="tab-stats" class="tab hidden" type="button">Статистика</button>
     <a class="tab" href="glyphs.html">Иероглифы</a>
   </nav>
 
+  <!-- Загрузка / проверка сервера -->
+  <section id="view-boot" class="view hidden">
+    <div class="panel">
+      <p id="boot-status" class="status">Проверяем сервер…</p>
+      <div id="boot-error" class="error hidden"></div>
+    </div>
+  </section>
+
+  <!-- Экран входа (серверный режим) -->
+  <section id="view-login" class="view hidden">
+    <div class="panel auth-panel">
+      <h2 class="panel-title">Вход</h2>
+      <p class="hint">Карточки, прогресс и комментарии доступны после входа.</p>
+      <form id="login-form" class="login-form" novalidate>
+        <label class="field field-wide">
+          <span>Логин</span>
+          <input id="login-name" type="text" autocomplete="username" autocapitalize="none">
+        </label>
+        <label class="field field-wide">
+          <span>Пароль</span>
+          <input id="login-password" type="password" autocomplete="current-password">
+        </label>
+        <div id="login-error" class="error hidden"></div>
+        <button id="btn-login" class="btn btn-accent" type="submit">Войти</button>
+      </form>
+    </div>
+  </section>
+
   <!-- Экран 1: список карточек -->
   <section id="view-list" class="view">
+    <div id="migration-banner" class="panel migration hidden">
+      <h3 class="panel-title">Есть локальный прогресс</h3>
+      <p id="migration-text" class="hint"></p>
+      <div class="row">
+        <button id="btn-migrate-local" class="btn btn-accent" type="button">Перенести локальные данные</button>
+        <button id="btn-dismiss-migration" class="btn btn-ghost" type="button">Не сейчас</button>
+      </div>
+      <p id="migration-result" class="status hidden"></p>
+    </div>
+
     <div class="controls">
       <label class="field">
         <span>Урок</span>
@@ -37,8 +81,8 @@
         <select id="filter-level"></select>
       </label>
       <label class="field field-wide">
-        <span>Поиск по названию</span>
-        <input id="filter-search" type="search" placeholder="например: 你好" autocomplete="off">
+        <span>Поиск по номеру</span>
+        <input id="filter-search" type="search" placeholder="например: 15" autocomplete="off">
       </label>
       <button id="filter-reset" class="btn btn-ghost" type="button">Сбросить</button>
     </div>
@@ -72,8 +116,30 @@
     <div id="card-rating" class="rating hidden">
       <div class="rating-label">Насколько помню?</div>
       <div id="card-rating-buttons" class="rating-buttons"></div>
+      <div id="rating-error" class="error hidden"></div>
       <p id="rating-info" class="rating-info"></p>
     </div>
+
+    <section id="card-comments" class="comments hidden">
+      <h3 class="panel-title">Комментарии</h3>
+      <p id="card-comments-status" class="status"></p>
+      <div id="card-comments-error" class="error hidden"></div>
+      <div id="card-comments-list" class="comment-list"></div>
+
+      <form id="card-comment-form" class="comment-form panel" novalidate>
+        <label class="field field-wide">
+          <span>Ваш комментарий</span>
+          <textarea id="card-comment-text" maxlength="4000" rows="3" placeholder="Ассоциация, вопрос, пример…"></textarea>
+        </label>
+        <label class="field field-wide">
+          <span>Картинки: до 4, каждая до 8 МБ (JPEG, PNG, WebP, GIF)</span>
+          <input id="card-comment-files" type="file" accept="image/*" multiple>
+        </label>
+        <div id="card-comments-preview" class="comment-preview"></div>
+        <div id="card-comment-error" class="error hidden"></div>
+        <button id="card-comment-submit" class="btn btn-accent" type="submit">Отправить</button>
+      </form>
+    </section>
 
     <nav class="card-nav">
       <button id="btn-prev" class="btn" type="button">← Предыдущая</button>
@@ -151,19 +217,69 @@
     <div id="session-rating" class="rating hidden">
       <div class="rating-label">Насколько помню?</div>
       <div id="session-rating-buttons" class="rating-buttons"></div>
+      <div id="session-rating-error" class="error hidden"></div>
       <p id="session-rating-info" class="rating-info"></p>
     </div>
 
+    <section id="session-comments" class="comments hidden">
+      <h3 class="panel-title">Комментарии</h3>
+      <p id="session-comments-status" class="status"></p>
+      <div id="session-comments-error" class="error hidden"></div>
+      <div id="session-comments-list" class="comment-list"></div>
+
+      <form id="session-comment-form" class="comment-form panel" novalidate>
+        <label class="field field-wide">
+          <span>Ваш комментарий</span>
+          <textarea id="session-comment-text" maxlength="4000" rows="3" placeholder="Ассоциация, вопрос, пример…"></textarea>
+        </label>
+        <label class="field field-wide">
+          <span>Картинки: до 4, каждая до 8 МБ (JPEG, PNG, WebP, GIF)</span>
+          <input id="session-comment-files" type="file" accept="image/*" multiple>
+        </label>
+        <div id="session-comments-preview" class="comment-preview"></div>
+        <div id="session-comment-error" class="error hidden"></div>
+        <button id="session-comment-submit" class="btn btn-accent" type="submit">Отправить</button>
+      </form>
+    </section>
+
     <nav class="card-nav">
+      <button id="btn-session-comments" class="btn btn-ghost hidden" type="button" aria-expanded="false">Комментарии</button>
       <button id="btn-skip" class="btn btn-ghost" type="button">Пропустить</button>
     </nav>
   </section>
 
   <!-- Экран 5: данные -->
   <section id="view-data" class="view hidden">
-    <h2 class="panel-title">Данные в этом браузере</h2>
+    <h2 class="panel-title">Данные</h2>
     <p id="data-summary" class="status"></p>
     <div id="data-unavailable" class="error hidden"></div>
+
+    <div id="server-profile" class="panel hidden">
+      <h3 class="panel-title">Профиль на сервере</h3>
+      <label class="field field-wide">
+        <span>Имя</span>
+        <input id="profile-name" type="text" maxlength="80" autocomplete="nickname">
+      </label>
+      <div class="row">
+        <button id="btn-save-name" class="btn" type="button">Сохранить имя</button>
+      </div>
+      <p id="profile-name-result" class="status hidden"></p>
+
+      <h3 class="panel-title panel-subtitle">Смена пароля</h3>
+      <label class="field field-wide">
+        <span>Текущий пароль</span>
+        <input id="profile-current" type="password" autocomplete="current-password">
+      </label>
+      <label class="field field-wide">
+        <span>Новый пароль</span>
+        <input id="profile-next" type="password" autocomplete="new-password">
+      </label>
+      <div id="profile-error" class="error hidden"></div>
+      <div class="row">
+        <button id="btn-change-password" class="btn" type="button">Сменить пароль</button>
+      </div>
+      <p id="profile-password-result" class="status hidden"></p>
+    </div>
 
     <div class="panel">
       <h3 class="panel-title">Выгрузить</h3>
@@ -197,6 +313,116 @@
     </div>
   </section>
 
+  <!-- Экран 6: добавление карточки (серверный режим) -->
+  <section id="view-add" class="view hidden">
+    <h2 class="panel-title">Новая карточка</h2>
+    <p class="hint">Карточка пишется в репозиторий на сервере. Секции фиксированы форматом карточки.</p>
+
+    <div class="panel">
+      <div class="controls controls-stack">
+        <label class="field">
+          <span>Тип</span>
+          <select id="create-type">
+            <option value="hieroglyph">Иероглиф</option>
+            <option value="rule">Правило</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Урок</span>
+          <input id="create-lesson" type="number" min="1" step="1" value="1">
+        </label>
+        <label class="field">
+          <span>Уровень</span>
+          <input id="create-level" type="text" maxlength="40" value="HSK1">
+        </label>
+      </div>
+
+      <div id="create-fields-hieroglyph" class="create-sections">
+        <label class="field field-wide">
+          <span>Иероглиф</span>
+          <textarea id="create-hieroglyph" rows="2" maxlength="10000" placeholder="你好"></textarea>
+        </label>
+        <label class="field field-wide">
+          <span>Пиньинь</span>
+          <textarea id="create-pinyin" rows="2" maxlength="10000" placeholder="nǐ hǎo"></textarea>
+        </label>
+        <label class="field field-wide">
+          <span>Перевод</span>
+          <textarea id="create-translation" rows="2" maxlength="10000" placeholder="привет"></textarea>
+        </label>
+        <label class="field field-wide">
+          <span>Пример</span>
+          <textarea id="create-example" rows="3" maxlength="10000" placeholder="你好，我叫李明。"></textarea>
+        </label>
+      </div>
+
+      <div id="create-fields-rule" class="create-sections hidden">
+        <label class="field field-wide">
+          <span>Правило</span>
+          <textarea id="create-rule" rows="4" maxlength="10000"></textarea>
+        </label>
+        <label class="field field-wide">
+          <span>Примеры</span>
+          <textarea id="create-rule-examples" rows="4" maxlength="10000"></textarea>
+        </label>
+      </div>
+
+      <div id="create-error" class="error hidden"></div>
+      <div class="row">
+        <button id="btn-create-card" class="btn btn-accent" type="button">Создать карточку</button>
+      </div>
+      <p id="create-result" class="status hidden"></p>
+    </div>
+  </section>
+
+  <!-- Экран 7: статистика (серверный режим) -->
+  <section id="view-stats" class="view hidden">
+    <h2 class="panel-title">Статистика</h2>
+    <p id="stats-status" class="status"></p>
+    <div id="stats-error" class="error hidden"></div>
+
+    <div class="stat-grid">
+      <div class="stat-card"><div id="stats-total-ratings" class="stat-value">—</div><div class="stat-label">оценок всего</div></div>
+      <div class="stat-card"><div id="stats-cards-touched" class="stat-value">—</div><div class="stat-label">карточек с историей</div></div>
+      <div class="stat-card"><div id="stats-cards-schedule" class="stat-value">—</div><div class="stat-label">в расписании</div></div>
+      <div class="stat-card"><div id="stats-due-now" class="stat-value">—</div><div class="stat-label">пора повторить</div></div>
+      <div class="stat-card"><div id="stats-new-cards" class="stat-value">—</div><div class="stat-label">новых</div></div>
+      <div class="stat-card"><div id="stats-later" class="stat-value">—</div><div class="stat-label">ждут своего часа</div></div>
+      <div class="stat-card"><div id="stats-streak" class="stat-value">—</div><div class="stat-label">дней подряд</div></div>
+    </div>
+
+    <div class="panel">
+      <h3 class="panel-title">Оценки за 30 дней</h3>
+      <div id="stats-chart" class="chart" role="img"></div>
+      <p id="stats-chart-caption" class="hint"></p>
+    </div>
+
+    <div class="panel">
+      <h3 class="panel-title">Распределение оценок</h3>
+      <div id="stats-ratings" class="dist"></div>
+    </div>
+
+    <div class="panel">
+      <h3 class="panel-title">Таблица лидеров</h3>
+      <p id="stats-leaderboard-status" class="status"></p>
+      <div class="table-wrap">
+        <table class="leaderboard">
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Имя</th>
+              <th scope="col">Оценки</th>
+              <th scope="col">Карточки</th>
+              <th scope="col">Хорошо</th>
+              <th scope="col">Дней подряд</th>
+            </tr>
+          </thead>
+          <tbody id="stats-leaderboard-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
   <footer class="foot">
     <a id="repo-link" href="#">Репозиторий на GitHub</a>
   </footer>
@@ -206,6 +432,9 @@
 <script src="js/srs.js"></script>
 <script src="js/store.js"></script>
 <script src="js/pagination.js"></script>
+<script src="js/cardlabel.js"></script>
+<script src="js/api.js"></script>
+<script src="js/comments.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
